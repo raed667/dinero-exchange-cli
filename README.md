@@ -1,6 +1,15 @@
 # 🦀 Dinero Exchange CLI
 
+
 A very basic CLI that internally uses [Dinero](https://github.com/raed667/dinero) for currency handling.
+
+## 📦 Install
+
+```sh
+cargo install dinero-exchange-cli
+```
+
+## ⚡️ Usage
 
 ```sh
 dinero-exchange-cli --help
