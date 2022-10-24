@@ -3,7 +3,8 @@ extern crate log;
 use chrono::{NaiveDate, Utc};
 use clap::Parser;
 use dinero::api::convert;
-
+extern crate strum;
+use dinero::currencies::Currency;
 use dinero::format::to_unit;
 use dinero::Dinero;
 use serde_json::json;
@@ -11,11 +12,11 @@ use std::env;
 use std::error::Error;
 use std::time::Duration;
 
-use crate::api::{get_currency, get_rate_from_api};
+use crate::api::get_rate_from_api;
 
 mod api;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "Dinero ")]
 #[command(author = "Raed667 <github@raed.email>")]
 #[command(version = "1.0")]
@@ -41,7 +42,7 @@ struct Cli {
     json: bool,
 }
 
-fn parse_args(args: Cli) -> (String, String, String, String, i128, bool) {
+fn parse_args(args: Cli) -> (String, Currency, Currency, String, i128, bool) {
     // Date
     let date = match args.date {
         Some(value) => {
@@ -74,7 +75,11 @@ fn parse_args(args: Cli) -> (String, String, String, String, i128, bool) {
 
     let value = args.value as i128;
 
-    (date, args.from, args.to, key, value, args.json)
+    let from = Currency::from_country_code_str(args.from).unwrap();
+
+    let to = Currency::from_country_code_str(args.to).unwrap();
+
+    (date, from, to, key, value, args.json)
 }
 
 #[tokio::main]
@@ -82,17 +87,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     let args = Cli::parse();
+    let from_str = args.from.clone();
+    let to_str = args.to.clone();
     let (date, from, to, key, value, is_json_output) = parse_args(args);
 
-    trace!("parameters: date={date}, from={from}, to={to}, value={value}, key={key}");
+    trace!(
+        "parameters: date={date}, from={:?}, to={:?}, value={value}, key={key}",
+        from,
+        to
+    );
 
     let pb = indicatif::ProgressBar::new_spinner();
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let rate = get_rate_from_api(&date, &from, &to, &key).await;
+    let rate = get_rate_from_api(&date, &from_str, &to_str, &key).await;
     pb.finish();
 
-    let base_value = crate::Dinero::new(value, get_currency(&from), Some(0));
+    let base_value = crate::Dinero::new(value, from, Some(0));
+
     let target_value = convert(&base_value, &rate);
     let from_value = to_unit(base_value, None, None);
     let to_value = to_unit(target_value, None, None);
@@ -108,18 +120,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             json!({
               "date": date,
                 "from": {
-                    "currency":from,
+                    "currency":from_str,
                     "amount":from_value
                 },
                 "to":{
-                    "currency":to,
+                    "currency":to_str,
                     "amount":to_value
                 }
             })
         );
     } else {
         // Human readable message
-        println!("[{date}] {from_value} {from} = {to_value} {to}");
+        println!("[{date}] {from_value} {from_str} = {to_value} {to_str}");
     }
 
     Ok(())
